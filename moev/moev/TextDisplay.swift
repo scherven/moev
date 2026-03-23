@@ -16,8 +16,9 @@ struct TextDisplay: View {
     @Binding public var possibilities: [UIPlace]
     @Binding public var searchingIdx: Int
     
+    public var location: CLLocation?
     public var getDirections: (Int) -> Void
-        
+
     var body: some View {
         GeometryReader { geometry in
             HStack {
@@ -28,16 +29,20 @@ struct TextDisplay: View {
                     withAnimation(Animation.easeInOut(duration: 0.5)) {
                         searching = true
                     }
-                    
+
                     withAnimation(Animation.easeInOut(duration: 0.2)) {
                         searchingFastAnimated = true
                     }
-                    
+
                     withAnimation(Animation.easeInOut(duration: 0.5).delay(0.3)) {
                         searchingSlowAnimated = true
                     }
-                    
+
                     searchingIdx = annotation.id
+
+                    if isEditing && annotation.name.isEmpty {
+                        fetchNearby()
+                    }
                 })
                 .onChange(of: annotation.name) { o, n in
                     if annotation.justChanged {
@@ -50,11 +55,6 @@ struct TextDisplay: View {
                 .padding(10)
                 .border(UIColor.Theme.searchColor, width: 10)
                 .background(UIColor.Theme.searchColor)
-                // todo shadow
-//                .shadow(
-//                    color: .primary,
-//                    radius: CGFloat(5),
-//                    x: CGFloat(0), y: CGFloat(0))
             }
             .zIndex(Double(possibilities.count))
         }
@@ -62,6 +62,14 @@ struct TextDisplay: View {
     
     func updatePossibilities() {
         APIHandler.shared.autocomplete(query: annotation.name) { places, error in
+            guard let places = places else { return }
+            possibilities = places
+        }
+    }
+
+    func fetchNearby() {
+        guard let coord = location?.coordinate else { return }
+        APIHandler.shared.fetchNearby(coordinate: coord) { places, error in
             guard let places = places else { return }
             possibilities = places
         }

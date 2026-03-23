@@ -128,9 +128,9 @@ struct UIPolyline: Identifiable {
     var polyline: MKPolyline
 }
 
-struct UIPlace: Identifiable {
+struct UIPlace: Identifiable, Codable {
     var id = UUID()
-    
+
     var main_text: String
     var secondary_text: String
     var placeID: String

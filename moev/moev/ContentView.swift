@@ -35,6 +35,8 @@ struct ContentView: View {
     
     @State private var routes: [UIRoutes] = []
 
+    @StateObject private var recentSearches = RecentSearchesStore()
+
     var body: some View {
         GeometryReader { geometry in
             ZStack {
@@ -42,10 +44,7 @@ struct ContentView: View {
                     map(geometry)
                         .frame(height: geometry.size.height / 2)
                     
-                    VStack { // to fill the remaining space (will eventually hold favorites / last searches)
-                        Text("")
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
+                    recentsList()
                 }
                 
                 VStack { // purple background that sweeps up
@@ -59,14 +58,20 @@ struct ContentView: View {
                 .opacity(searchingFastAnimated ? 1 : 0)
                 
                 VStack { // list background that sweeps up after
+                    RoundedRectangle(cornerRadius: 2.5)
+                        .frame(width: 40, height: 5)
+                        .foregroundColor(Color.gray.opacity(0.4))
+                        .padding(.top, 8)
+                        .padding(.bottom, 4)
+
                     possibilitiesList()
                     .offset(CGSize(width: 0.0, height: 5))
                     .opacity(searchingSlowAnimated && !(loadingResults || showingResults) ? 1 : 0)
-                    
+
                     ActivityIndicator(isAnimating: .constant(true), style: .large)
                     .offset(CGSize(width: 0.0, height: -geometry.size.height / 2))
                     .opacity(loadingResults ? 1 : 0)
-                    
+
                     ScrollView(.horizontal, showsIndicators: false) {
                         VStack {
                             timeMarks()
@@ -81,6 +86,13 @@ struct ContentView: View {
                 .edgesIgnoringSafeArea(.all)
                 .offset(CGSize(width: 0.0, height: searchingSlowAnimated ? 0 : geometry.size.height))
                 .frame(height: geometry.size.height - 30)
+                .gesture(
+                    DragGesture().onEnded { value in
+                        if value.translation.height > 100 {
+                            dismissSearch()
+                        }
+                    }
+                )
                 
                 VStack {
                     searchBars()
@@ -91,6 +103,17 @@ struct ContentView: View {
         }
     }
     
+    func dismissSearch() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        withAnimation(.easeInOut(duration: 0.5)) {
+            searchingSlowAnimated = false
+        }
+        withAnimation(.easeInOut(duration: 0.2).delay(0.3)) {
+            searchingFastAnimated = false
+            searching = false
+        }
+    }
+
     func getDirections(senderID: Int) {
         withAnimation(Animation.easeInOut(duration: 0.5)) {
             loadingResults = true
@@ -232,6 +255,29 @@ struct ContentView: View {
         }
     }
     
+    func recentsList() -> some View {
+        List(recentSearches.recents) { place in
+            HStack {
+                Image(systemName: "clock")
+                VStack(alignment: .leading) {
+                    Text(place.main_text)
+                        .font(.system(size: 17))
+                        .lineLimit(1)
+                    Text(place.secondary_text)
+                        .font(.system(size: 10))
+                        .lineLimit(1)
+                }
+            }
+            .listRowBackground(UIColor.Theme.listBackgroundColor)
+            .onTapGesture {
+                addMarker(p: place)
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(UIColor.Theme.listBackgroundColor)
+    }
+
     func addMarker(p: UIPlace) {
         APIHandler.shared.get_info(place_id: p.placeID) { result, error in
             guard let result = result else { return }
@@ -241,6 +287,7 @@ struct ContentView: View {
             annotations[searchingIdx].placeID = p.placeID
             annotations[searchingIdx].justChanged = true
 
+            recentSearches.add(p)
             getDirections(senderID: searchingIdx)
         }
     }
@@ -262,6 +309,7 @@ struct ContentView: View {
                         searchingSlowAnimated: $searchingSlowAnimated,
                         possibilities: $possibilities,
                         searchingIdx: $searchingIdx,
+                        location: locationManager.lastLocation,
                         getDirections: getDirections)
         }
     }

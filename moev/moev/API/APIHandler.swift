@@ -56,27 +56,53 @@ class APIHandler {
         _request(url: url.absoluteString, headers: headers, body: nil, method: "GET", handler: handler)
     }
     
-//    func nearbyPlaces(center: CLLocationCoordinate2D, radius: Int = 100, handler: @escaping RequestHandler) {
-//        let url = "https://places.googleapis.com/v1/places:searchNearby"
-//        let body = NearbyPlacesBody(
-//            maxResultCount: 10,
-//            rankPreference: "DISTANCE",
-//            locationRestriction: LocationRestriction(
-//                circle: Circle(center: [
-//                    "latitude": center.latitude,
-//                    "longitude": center.longitude
-//                ],
-//                radius: radius)
-//            )
-//        )
-//
-//        let headers: [String: String] = [
-//            "X-Goog-Api-Key": GMAK,
-//            "X-Goog-FieldMask": "places.displayName,places.photos"
-//        ]
-//        
-//        _request(url: url, headers: headers, body: body, method: "POST", handler: handler)
-//    }
+    func fetchNearby(coordinate: CLLocationCoordinate2D, handler: @escaping ([UIPlace]?, Error?) -> Void) {
+        struct Center: Encodable { let latitude: Double; let longitude: Double }
+        struct Circle: Encodable { let center: Center; let radius: Double }
+        struct LocationRestriction: Encodable { let circle: Circle }
+        struct NearbyRequest: Encodable {
+            let maxResultCount: Int
+            let rankPreference: String
+            let locationRestriction: LocationRestriction
+        }
+
+        let body = NearbyRequest(
+            maxResultCount: 10,
+            rankPreference: "DISTANCE",
+            locationRestriction: LocationRestriction(
+                circle: Circle(
+                    center: Center(latitude: coordinate.latitude, longitude: coordinate.longitude),
+                    radius: 1000.0
+                )
+            )
+        )
+
+        let headers: [String: String] = [
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": GMAK,
+            "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress"
+        ]
+
+        _request(url: "https://places.googleapis.com/v1/places:searchNearby",
+                 headers: headers,
+                 body: body,
+                 method: "POST") { data, _, error in
+            guard let d = data,
+                  let json = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+                  let places = json["places"] as? [[String: Any]] else {
+                return handler(nil, error)
+            }
+
+            let results: [UIPlace] = places.compactMap { place in
+                guard let name = (place["displayName"] as? [String: Any])?["text"] as? String,
+                      let id = place["id"] as? String else { return nil }
+                let address = place["formattedAddress"] as? String ?? ""
+                return UIPlace(main_text: name, secondary_text: address, placeID: id)
+            }
+
+            handler(results, nil)
+        }
+    }
     
     func directions(origin: Waypoint, destination: Waypoint, handler: @escaping(ComputeRoutesResponse?, Error?) -> Void) {
         let url = "https://routes.googleapis.com/directions/v2:computeRoutes"
