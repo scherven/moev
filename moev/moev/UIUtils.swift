@@ -114,12 +114,13 @@ func date(from timestamp: String) -> Date? {
 
 struct Annotation: Identifiable {
     var id: Int
-    
+
     var location: CLLocationCoordinate2D?
     var name: String
     var placeID: String = ""
     var placeHolder: String = "Next location..."
     var justChanged: Bool = false
+    var departureTime: Date? = nil
 }
 
 struct UIPolyline: Identifiable {

@@ -10,13 +10,17 @@ import SwiftUI
 
 struct RouteView: View {
     @State public var route: CombinedRoute
-    
+    var onSelect: (CombinedRoute) -> Void = { _ in }
+
     var body: some View {
         VStack {
             ForEach(route.legs ?? []) { leg in
                 stepsList(leg.steps)
             }
             Text("Leave at \(route.startTime.format("hh:mm"))")
+        }
+        .onTapGesture {
+            onSelect(route)
         }
     }
     

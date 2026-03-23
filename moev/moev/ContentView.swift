@@ -32,8 +32,12 @@ struct ContentView: View {
     
     @State public var loadingResults: Bool = false
     @State public var showingResults: Bool = false
-    
+
     @State private var routes: [UIRoutes] = []
+
+    @State private var selectedRoute: CombinedRoute? = nil
+    @State private var showTimePicker = false
+    @State private var timePickerIdx = 0
 
     @StateObject private var recentSearches = RecentSearchesStore()
 
@@ -100,6 +104,9 @@ struct ContentView: View {
                 }
                 .offset(CGSize(width: 10.0, height: searching ? 0 : geometry.size.height / 2 - 20))
             }
+            .sheet(item: $selectedRoute) { route in
+                RouteDetailView(route: route)
+            }
         }
     }
     
@@ -108,50 +115,57 @@ struct ContentView: View {
         withAnimation(.easeInOut(duration: 0.5)) {
             searchingSlowAnimated = false
         }
-        withAnimation(.easeInOut(duration: 0.2).delay(0.3)) {
+        withAnimation(.easeInOut(duration: 0.5).delay(0.3)) {
             searchingFastAnimated = false
             searching = false
         }
     }
 
     func getDirections(senderID: Int) {
+        print("[getDirections] senderID:", senderID, "annotations count:", annotations.count)
         withAnimation(Animation.easeInOut(duration: 0.5)) {
             loadingResults = true
         }
-        
+
         if senderID > 0 {
             getDirections(id1: senderID - 1, id2: senderID)
         }
-        
+
         if senderID < annotations.count - 1 {
             getDirections(id1: senderID, id2: senderID + 1)
         }
     }
-    
+
     func getDirections(id1: Int, id2: Int) {
         let origin = getWaypoint(id1)
         let destination = getWaypoint(id2)
-        
+        print("[getDirections] id1:", id1, "id2:", id2,
+              "origin:", origin != nil ? "ok" : "nil",
+              "dest:", destination != nil ? "ok" : "nil")
+
         guard let o = origin, let d = destination else {
-            return // todo
+            print("[getDirections] missing waypoint, aborting")
+            withAnimation(Animation.easeInOut(duration: 0.5)) {
+                loadingResults = false
+            }
+            return
         }
         
 //        updatePolylines(withID: id1, newPolyline: emptyPolyline())
         
-        APIHandler.shared.directions(origin: o, destination: d) { results, error in
+        APIHandler.shared.directions(origin: o, destination: d, departureTime: annotations[id1].departureTime) { results, error in
+            print("[getDirections] callback fired, results nil:", results == nil, "error:", error as Any)
             guard let route = results else {
-                print("e", error)
+                print("[getDirections] guard failed — no results, hiding spinner")
+                withAnimation(Animation.easeInOut(duration: 0.5)) {
+                    loadingResults = false
+                }
                 return
             }
-            
-            print("FOUND ROUTES", route.routes?.count)
-            
-//            print("GOT ROUTE", route)
-            
-//            let polyline = route.polyline.decode()
-//            updatePolylines(withID: id1, newPolyline: polyline)
+
+            print("[getDirections] FOUND ROUTES", route.routes?.count as Any)
             updateRoutes(withID: id1, newRoute: route)
-            
+
             withAnimation(Animation.easeInOut(duration: 0.5)) {
                 loadingResults = false
                 showingResults = true
@@ -250,7 +264,7 @@ struct ContentView: View {
     func routesList() -> some View {
         return ForEach(routes) { rs in
             ForEach(rs.routes) { route in
-                RouteView(route: route)
+                RouteView(route: route, onSelect: { r in selectedRoute = r })
             }
         }
     }
@@ -293,24 +307,71 @@ struct ContentView: View {
     }
     
     func searchBars() -> some View {
-        // todo expand or something
-//        return ForEach($annotations) { $a in
-//            TextDisplay(annotation: $a, 
-//                        searching: $searching,
-//                        searchingFastAnimated: $searchingFastAnimated,
-//                        searchingSlowAnimated: $searchingSlowAnimated,
-//                        possibilities: $possibilities,
-//                        getDirections: getDirections)
-//        }
-        return HStack {
-            TextDisplay(annotation: $annotations[1],
-                        searching: $searching,
-                        searchingFastAnimated: $searchingFastAnimated,
-                        searchingSlowAnimated: $searchingSlowAnimated,
-                        possibilities: $possibilities,
-                        searchingIdx: $searchingIdx,
-                        location: locationManager.lastLocation,
-                        getDirections: getDirections)
+        VStack(spacing: 4) {
+            ForEach(annotations.indices.dropFirst(), id: \.self) { i in
+                HStack {
+                    TextDisplay(annotation: $annotations[i],
+                                searching: $searching,
+                                searchingFastAnimated: $searchingFastAnimated,
+                                searchingSlowAnimated: $searchingSlowAnimated,
+                                possibilities: $possibilities,
+                                searchingIdx: $searchingIdx,
+                                location: locationManager.lastLocation,
+                                getDirections: getDirections)
+                    Button {
+                        timePickerIdx = i
+                        showTimePicker = true
+                    } label: {
+                        Image(systemName: annotations[i].departureTime == nil ? "clock" : "clock.fill")
+                            .padding(8)
+                            .foregroundColor(annotations[i].departureTime == nil ? .secondary : UIColor.Theme.searchColor)
+                    }
+                }
+            }
+            Button {
+                annotations.append(Annotation(id: annotations.count, name: ""))
+            } label: {
+                HStack {
+                    Image(systemName: "plus.circle")
+                    Text("Add stop")
+                        .font(.system(size: 14))
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 6)
+                .foregroundColor(.secondary)
+            }
+        }
+        .sheet(isPresented: $showTimePicker) {
+            VStack(spacing: 16) {
+                HStack {
+                    Button("Clear") {
+                        annotations[timePickerIdx].departureTime = nil
+                        showTimePicker = false
+                    }
+                    Spacer()
+                    Text("Depart at")
+                        .font(.headline)
+                    Spacer()
+                    Button("Done") { showTimePicker = false }
+                }
+                .padding(.horizontal)
+                .padding(.top)
+
+                DatePicker(
+                    "",
+                    selection: Binding(
+                        get: { annotations[timePickerIdx].departureTime ?? Date() },
+                        set: { annotations[timePickerIdx].departureTime = $0 }
+                    ),
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                .datePickerStyle(.wheel)
+                .labelsHidden()
+                .padding(.horizontal)
+
+                Spacer()
+            }
+            .presentationDetents([.height(320)])
         }
     }
 }

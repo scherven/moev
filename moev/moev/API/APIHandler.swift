@@ -42,7 +42,9 @@ class APIHandler {
                 request.httpBody = data
             }
 
-            let task = URLSession.shared.dataTask(with: request, completionHandler: handler)
+            let task = URLSession.shared.dataTask(with: request) { data, response, error in
+                DispatchQueue.main.async { handler(data, response, error) }
+            }
             task.resume()
         } catch {
             
@@ -104,14 +106,21 @@ class APIHandler {
         }
     }
     
-    func directions(origin: Waypoint, destination: Waypoint, handler: @escaping(ComputeRoutesResponse?, Error?) -> Void) {
+    func directions(origin: Waypoint, destination: Waypoint, departureTime: Date? = nil, handler: @escaping(ComputeRoutesResponse?, Error?) -> Void) {
         let url = "https://routes.googleapis.com/directions/v2:computeRoutes"
-        
+
+        var deptTimeStr: String? = nil
+        if let dt = departureTime {
+            let fmt = ISO8601DateFormatter()
+            deptTimeStr = fmt.string(from: dt)
+        }
+
         let body = ComputeRoutesRequest(
             origin: origin,
             destination: destination,
             travelMode: .TRANSIT,
             polylineEncoding: .ENCODED_POLYLINE,
+            departureTime: deptTimeStr,
             computeAlternativeRoutes: true
         )
         
@@ -132,13 +141,29 @@ class APIHandler {
             "X-Goog-FieldMask": fields.joined(separator: ",")
         ]
         
+        if let bodyData = try? JSONEncoder().encode(body),
+           let bodyStr = String(data: bodyData, encoding: .utf8) {
+            print("[directions] request body:", bodyStr)
+        }
+
         _request(url: url, headers: headers, body: body, method: "POST") { data, response, error in
+            if let http = response as? HTTPURLResponse {
+                print("[directions] HTTP status:", http.statusCode)
+            }
+            if let e = error {
+                print("[directions] network error:", e)
+            }
             guard let d = data else {
+                print("[directions] no data returned")
                 return handler(nil, error)
             }
-            
+            if let raw = String(data: d, encoding: .utf8) {
+                print("[directions] raw response:", raw)
+            }
+
             let results = ComputeRoutesResponse.from(jsonData: d)
-            
+            print("[directions] parsed routes count:", results?.routes?.count ?? -1)
+
             handler(results, error)
         }
     }
