@@ -230,7 +230,7 @@ extension Route {
         let legs = legs?.map { i in CombinedLeg(steps: combineWalks(steps: i.steps!)) }
         var d = convert_duration(duration)
         var startTime = Date.now
-        if legs?.count ?? 0 > 0 {
+        if legs?.count ?? 0 > 0 && legs![0].steps[0].departureTime != nil {
             startTime = legs![0].steps[0].departureTime!
             d += legs![0].steps[0].departureTime!.timeIntervalSinceNow
         }

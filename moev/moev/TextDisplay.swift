@@ -15,7 +15,8 @@ struct TextDisplay: View {
     @Binding public var searchingSlowAnimated: Bool
     @Binding public var possibilities: [UIPlace]
     @Binding public var searchingIdx: Int
-    
+    @Binding public var showingResults: Bool
+
     public var location: CLLocation?
     public var getDirections: (Int) -> Void
 
@@ -39,6 +40,7 @@ struct TextDisplay: View {
                     }
 
                     searchingIdx = annotation.id
+                    if isEditing { showingResults = false }
 
                     if isEditing && annotation.name.isEmpty {
                         fetchNearby()

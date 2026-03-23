@@ -121,6 +121,7 @@ struct Annotation: Identifiable {
     var placeHolder: String = "Next location..."
     var justChanged: Bool = false
     var departureTime: Date? = nil
+    var dwellMinutes: Int? = nil
 }
 
 struct UIPolyline: Identifiable {
@@ -140,6 +141,21 @@ struct UIPlace: Identifiable, Codable {
 struct UIRoutes: Identifiable {
     var id: Int
     var routes: [CombinedRoute]
+}
+
+// One complete journey: ordered segments (A→B, B→C …) plus optional
+// dwell time between each pair.  dwellMinutes[i] is the time spent at
+// the stop between segments[i] and segments[i+1].
+/// Carries the annotation index into a .sheet(item:) closure so SwiftUI
+/// always passes the current value rather than a stale capture.
+struct TimePickerItem: Identifiable {
+    let id: Int  // annotation index
+}
+
+struct MultiLegRoute: Identifiable {
+    var id = UUID()
+    var segments: [CombinedRoute]
+    var dwellMinutes: [Int?]
 }
 
 extension Date {

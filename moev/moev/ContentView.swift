@@ -35,9 +35,8 @@ struct ContentView: View {
 
     @State private var routes: [UIRoutes] = []
 
-    @State private var selectedRoute: CombinedRoute? = nil
-    @State private var showTimePicker = false
-    @State private var timePickerIdx = 0
+    @State private var selectedMultiLeg: MultiLegRoute? = nil
+    @State private var timePickerItem: TimePickerItem? = nil
 
     @StateObject private var recentSearches = RecentSearchesStore()
 
@@ -68,27 +67,42 @@ struct ContentView: View {
                         .padding(.top, 8)
                         .padding(.bottom, 4)
 
-                    possibilitiesList()
-                    .offset(CGSize(width: 0.0, height: 5))
-                    .opacity(searchingSlowAnimated && !(loadingResults || showingResults) ? 1 : 0)
+                    searchBars()
+                        .padding(.horizontal, 10)
 
-                    ActivityIndicator(isAnimating: .constant(true), style: .large)
-                    .offset(CGSize(width: 0.0, height: -geometry.size.height / 2))
-                    .opacity(loadingResults ? 1 : 0)
-
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        VStack {
-                            timeMarks()
-                            routesList()
-                                .scrollClipDisabled()
+                    // Content area: possibilities sits on top of routes so
+                    // you never see routes while picking a destination.
+                    ZStack {
+                        // Routes — bottom of the stack
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            VStack {
+                                timeMarks()
+                                routesList()
+                                    .scrollClipDisabled()
+                            }
                         }
+                        .opacity(showingResults ? 1 : 0)
+                        .allowsHitTesting(showingResults)
+
+                        // Loading spinner
+                        ActivityIndicator(isAnimating: .constant(true), style: .large)
+                            .opacity(loadingResults ? 1 : 0)
+                            .allowsHitTesting(false)
+
+                        // Suggestions — on top, fully covers routes.
+                        // Mutually exclusive with showingResults: when routes
+                        // are visible this is hidden, and tapping a search bar
+                        // resets showingResults = false (in TextDisplay) which
+                        // flips suggestions back on.
+                        possibilitiesList()
+                            .opacity(searchingSlowAnimated && !loadingResults && !showingResults ? 1 : 0)
+                            .allowsHitTesting(searchingSlowAnimated && !loadingResults && !showingResults)
                     }
-                    .offset(CGSize(width: 0.0, height: -geometry.size.height / 2))
-                    .opacity(showingResults ? 1 : 0)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .background(UIColor.Theme.listBackgroundColor)
                 .edgesIgnoringSafeArea(.all)
-                .offset(CGSize(width: 0.0, height: searchingSlowAnimated ? 0 : geometry.size.height))
+                .offset(CGSize(width: 0.0, height: searchingSlowAnimated ? 0 : geometry.size.height / 2 - 45))
                 .frame(height: geometry.size.height - 30)
                 .gesture(
                     DragGesture().onEnded { value in
@@ -97,15 +111,9 @@ struct ContentView: View {
                         }
                     }
                 )
-                
-                VStack {
-                    searchBars()
-                    Spacer()
-                }
-                .offset(CGSize(width: 10.0, height: searching ? 0 : geometry.size.height / 2 - 20))
             }
-            .sheet(item: $selectedRoute) { route in
-                RouteDetailView(route: route)
+            .sheet(item: $selectedMultiLeg) { multi in
+                RouteDetailView(multiRoute: multi)
             }
         }
     }
@@ -182,6 +190,7 @@ struct ContentView: View {
     }
     
     func updateRoutes(withID id: Int, newRoute: ComputeRoutesResponse) {
+        if (newRoute.routes == nil) { return; }
         let r = combineRoutes(routes: newRoute.routes!)
         
         for i in routes.indices {
@@ -261,10 +270,23 @@ struct ContentView: View {
         }
     }
     
+    @ViewBuilder
     func routesList() -> some View {
-        return ForEach(routes) { rs in
-            ForEach(rs.routes) { route in
-                RouteView(route: route, onSelect: { r in selectedRoute = r })
+        // Collect the first alternative from each segment, ordered by id (A→B, B→C …)
+        let ordered = routes.sorted { $0.id < $1.id }
+        let firstRoutes = ordered.compactMap { $0.routes.first }
+
+        if !firstRoutes.isEmpty {
+            // Build dwell array: dwellMinutes[i] = time spent at the stop
+            // between segments[i] and segments[i+1], i.e. annotations[i+1].
+            let dwell: [Int?] = firstRoutes.indices.map { i in
+                i + 1 < annotations.count ? annotations[i + 1].dwellMinutes : nil
+            }
+
+            let multi = MultiLegRoute(segments: firstRoutes, dwellMinutes: dwell)
+
+            MultiRouteView(multiRoute: multi) {
+                selectedMultiLeg = multi
             }
         }
     }
@@ -292,6 +314,12 @@ struct ContentView: View {
         .background(UIColor.Theme.listBackgroundColor)
     }
 
+    func renumberAnnotations() {
+        for i in annotations.indices {
+            annotations[i].id = i
+        }
+    }
+
     func addMarker(p: UIPlace) {
         APIHandler.shared.get_info(place_id: p.placeID) { result, error in
             guard let result = result else { return }
@@ -307,8 +335,8 @@ struct ContentView: View {
     }
     
     func searchBars() -> some View {
-        VStack(spacing: 4) {
-            ForEach(annotations.indices.dropFirst(), id: \.self) { i in
+        VStack(spacing: 0) {
+            ForEach(annotations.indices, id: \.self) { i in
                 HStack {
                     TextDisplay(annotation: $annotations[i],
                                 searching: $searching,
@@ -316,62 +344,94 @@ struct ContentView: View {
                                 searchingSlowAnimated: $searchingSlowAnimated,
                                 possibilities: $possibilities,
                                 searchingIdx: $searchingIdx,
+                                showingResults: $showingResults,
                                 location: locationManager.lastLocation,
                                 getDirections: getDirections)
                     Button {
-                        timePickerIdx = i
-                        showTimePicker = true
+                        timePickerItem = TimePickerItem(id: i)
                     } label: {
-                        Image(systemName: annotations[i].departureTime == nil ? "clock" : "clock.fill")
+                        let isSet = i == 0
+                            ? annotations[i].departureTime != nil
+                            : annotations[i].dwellMinutes != nil
+                        Image(systemName: isSet ? "clock.fill" : "clock")
                             .padding(8)
-                            .foregroundColor(annotations[i].departureTime == nil ? .secondary : UIColor.Theme.searchColor)
+                            .foregroundColor(isSet ? UIColor.Theme.searchColor : .secondary)
+                    }
+                    Button {
+                        annotations.insert(Annotation(id: 0, name: ""), at: i + 1)
+                        renumberAnnotations()
+                    } label: {
+                        Image(systemName: "plus.circle")
+                            .padding(8)
+                            .foregroundColor(.secondary)
                     }
                 }
-            }
-            Button {
-                annotations.append(Annotation(id: annotations.count, name: ""))
-            } label: {
-                HStack {
-                    Image(systemName: "plus.circle")
-                    Text("Add stop")
-                        .font(.system(size: 14))
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 6)
-                .foregroundColor(.secondary)
             }
         }
-        .sheet(isPresented: $showTimePicker) {
-            VStack(spacing: 16) {
-                HStack {
-                    Button("Clear") {
-                        annotations[timePickerIdx].departureTime = nil
-                        showTimePicker = false
+        .sheet(item: $timePickerItem) { item in
+            if item.id == 0 {
+                // Origin: pick a departure time
+                VStack(spacing: 16) {
+                    HStack {
+                        Button("Clear") {
+                            annotations[item.id].departureTime = nil
+                            timePickerItem = nil
+                        }
+                        Spacer()
+                        Text("Depart at").font(.headline)
+                        Spacer()
+                        Button("Done") { timePickerItem = nil }
                     }
+                    .padding(.horizontal)
+                    .padding(.top)
+
+                    DatePicker(
+                        "",
+                        selection: Binding(
+                            get: { annotations[item.id].departureTime ?? Date() },
+                            set: { annotations[item.id].departureTime = $0 }
+                        ),
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .datePickerStyle(.wheel)
+                    .labelsHidden()
+                    .padding(.horizontal)
+
                     Spacer()
-                    Text("Depart at")
-                        .font(.headline)
-                    Spacer()
-                    Button("Done") { showTimePicker = false }
                 }
-                .padding(.horizontal)
-                .padding(.top)
+                .presentationDetents([.height(320)])
+            } else {
+                // Intermediate / destination: pick dwell time in minutes
+                VStack(spacing: 16) {
+                    HStack {
+                        Button("Clear") {
+                            annotations[item.id].dwellMinutes = nil
+                            timePickerItem = nil
+                        }
+                        Spacer()
+                        Text("Time at stop").font(.headline)
+                        Spacer()
+                        Button("Done") { timePickerItem = nil }
+                    }
+                    .padding(.horizontal)
+                    .padding(.top)
 
-                DatePicker(
-                    "",
-                    selection: Binding(
-                        get: { annotations[timePickerIdx].departureTime ?? Date() },
-                        set: { annotations[timePickerIdx].departureTime = $0 }
-                    ),
-                    displayedComponents: [.date, .hourAndMinute]
-                )
-                .datePickerStyle(.wheel)
-                .labelsHidden()
-                .padding(.horizontal)
+                    Picker("Minutes", selection: Binding(
+                        get: { annotations[item.id].dwellMinutes ?? 15 },
+                        set: { annotations[item.id].dwellMinutes = $0 }
+                    )) {
+                        ForEach([5, 10, 15, 20, 30, 45, 60, 90, 120], id: \.self) { m in
+                            Text(m < 60 ? "\(m) min" : "\(m / 60) hr \(m % 60 == 0 ? "" : "\(m % 60) min")")
+                                .tag(m)
+                        }
+                    }
+                    .pickerStyle(.wheel)
+                    .padding(.horizontal)
 
-                Spacer()
+                    Spacer()
+                }
+                .presentationDetents([.height(280)])
             }
-            .presentationDetents([.height(320)])
         }
     }
 }

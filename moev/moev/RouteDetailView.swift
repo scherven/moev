@@ -6,18 +6,30 @@
 import SwiftUI
 
 struct RouteDetailView: View {
-    let route: CombinedRoute
+    let multiRoute: MultiLegRoute
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Leave at \(route.startTime.format("h:mm a"))")
-                    .font(.headline)
-                    .padding()
+                if let first = multiRoute.segments.first {
+                    Text("Leave at \(first.startTime.format("h:mm a"))")
+                        .font(.headline)
+                        .padding()
+                }
 
-                ForEach(route.legs ?? []) { leg in
-                    ForEach(leg.steps) { step in
-                        stepRow(step)
+                ForEach(Array(multiRoute.segments.enumerated()), id: \.offset) { idx, route in
+                    ForEach(route.legs ?? []) { leg in
+                        ForEach(leg.steps) { step in
+                            stepRow(step)
+                            Divider().padding(.leading, 64)
+                        }
+                    }
+
+                    // Dwell row between segments
+                    if idx < multiRoute.segments.count - 1,
+                       idx < multiRoute.dwellMinutes.count,
+                       let dwell = multiRoute.dwellMinutes[idx] {
+                        dwellRow(minutes: dwell)
                         Divider().padding(.leading, 64)
                     }
                 }
@@ -26,6 +38,35 @@ struct RouteDetailView: View {
         .background(UIColor.Theme.listBackgroundColor)
         .presentationDetents([.medium, .large])
     }
+
+    // MARK: - Dwell row
+
+    func dwellRow(minutes: Int) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text("⏱")
+                .font(.system(size: 20))
+                .frame(width: 40, height: 40)
+                .background(Color.orange.opacity(0.4))
+                .cornerRadius(6)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Time at stop")
+                    .font(.body)
+                Text(minutes < 60
+                     ? "\(minutes) min"
+                     : "\(minutes / 60) hr\(minutes % 60 == 0 ? "" : " \(minutes % 60) min")")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 10)
+        .background(Color.orange.opacity(0.08))
+    }
+
+    // MARK: - Step row
 
     func stepRow(_ step: CombinedStep) -> some View {
         HStack(alignment: .top, spacing: 12) {
@@ -83,11 +124,11 @@ struct RouteDetailView: View {
             return line.name ?? line.nameShort ?? "Transit"
         }
         switch step.travelMode {
-        case .WALK: return "Walk"
-        case .DRIVE: return "Drive"
-        case .BICYCLE: return "Bicycle"
+        case .WALK:        return "Walk"
+        case .DRIVE:       return "Drive"
+        case .BICYCLE:     return "Bicycle"
         case .TWO_WHEELER: return "Scooter"
-        default: return "Transit"
+        default:           return "Transit"
         }
     }
 }
