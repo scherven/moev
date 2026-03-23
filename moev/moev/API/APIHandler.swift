@@ -11,6 +11,11 @@ import MapKit
 
 typealias RequestHandler = (Data?, URLResponse?, Error?) -> Void
 
+struct PlaceResult {
+    var name: String
+    var location: CLLocationCoordinate2D
+}
+
 class APIHandler {
     static let shared = APIHandler()
     
@@ -44,22 +49,11 @@ class APIHandler {
         }
     }
     
-    func _get_request(baseurl: String, params: [String: String], handler: @escaping RequestHandler) {
-        var first = true
-        var url = baseurl
-        for (key, value) in params {
-            if (!first) {
-                url += "&"
-            } else {
-                first = false
-            }
-            
-            url += "\(key)=\(value)"
-        }
-        
-//        print("GET REQUESTING", url)
-        
-        _request(url: url, headers: [:], body: nil, method: "GET", handler: handler)
+    func _get_request(baseurl: String, params: [String: String], headers: [String: String] = [:], handler: @escaping RequestHandler) {
+        guard var components = URLComponents(string: baseurl) else { return }
+        components.queryItems = params.map { URLQueryItem(name: $0.key, value: $0.value) }
+        guard let url = components.url else { return }
+        _request(url: url.absoluteString, headers: headers, body: nil, method: "GET", handler: handler)
     }
     
 //    func nearbyPlaces(center: CLLocationCoordinate2D, radius: Int = 100, handler: @escaping RequestHandler) {
@@ -127,44 +121,67 @@ class APIHandler {
         session = UUID()
     }
     
-    func autocomplete(query: String, handler: @escaping (PlacesAutocompleteResponse?, Error?) -> Void) {
+    private struct AutocompleteRequest: Encodable {
+        let input: String
+        let sessionToken: String
+    }
+
+    func autocomplete(query: String, handler: @escaping ([UIPlace]?, Error?) -> Void) {
         if session == nil {
             start_session()
         }
-        
-        _get_request(baseurl: "https://maps.googleapis.com/maps/api/place/autocomplete/json?", params: [
-            "input": query,
-            "sessiontoken": session!.uuidString,
-            "key": GMAK
-        ]) { data, response, error in
-            guard let d = data else {
-                print("e", error)
+
+        let body = AutocompleteRequest(input: query, sessionToken: session!.uuidString)
+        let headers: [String: String] = [
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": GMAK
+        ]
+
+        _request(url: "https://places.googleapis.com/v1/places:autocomplete",
+                 headers: headers,
+                 body: body,
+                 method: "POST") { data, response, error in
+            guard let d = data,
+                  let json = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+                  let suggestions = json["suggestions"] as? [[String: Any]] else {
                 return handler(nil, error)
             }
-            
-            
-            let results = PlacesAutocompleteResponse.from(jsonData: d)
-                        
-            handler(results, error)
+
+            let places: [UIPlace] = suggestions.compactMap { suggestion in
+                guard let pred = suggestion["placePrediction"] as? [String: Any],
+                      let placeId = pred["placeId"] as? String,
+                      let sf = pred["structuredFormat"] as? [String: Any],
+                      let mainText = (sf["mainText"] as? [String: Any])?["text"] as? String,
+                      let secondaryText = (sf["secondaryText"] as? [String: Any])?["text"] as? String
+                else { return nil }
+                return UIPlace(main_text: mainText, secondary_text: secondaryText, placeID: placeId)
+            }
+
+            handler(places, nil)
         }
     }
     
-    func get_info(place_id: String, handler: @escaping (PlacesDetailsResponse?, Error?) -> Void) {
-        _get_request(baseurl: "https://maps.googleapis.com/maps/api/place/details/json?", params: [
-            "place_id": place_id,
-            "fields": "geometry,name",
-            "sessiontoken": session!.uuidString,
-            "key": GMAK
-        ]) { [self] (d, u, e) in
+    func get_info(place_id: String, handler: @escaping (PlaceResult?, Error?) -> Void) {
+        let sessionToken = session?.uuidString ?? ""
+        _get_request(
+            baseurl: "https://places.googleapis.com/v1/places/\(place_id)",
+            params: ["sessionToken": sessionToken],
+            headers: [
+                "X-Goog-Api-Key": GMAK,
+                "X-Goog-FieldMask": "location,displayName"
+            ]
+        ) { [self] data, _, error in
             session = nil
 
-            guard let j = d else {
-                return handler(nil, e)
-            }
-            
-            let results = PlacesDetailsResponse.from(jsonData: j)
-            
-            handler(results, e)
+            guard let d = data,
+                  let json = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+                  let loc = json["location"] as? [String: Any],
+                  let lat = loc["latitude"] as? Double,
+                  let lng = loc["longitude"] as? Double,
+                  let name = (json["displayName"] as? [String: Any])?["text"] as? String
+            else { return handler(nil, error) }
+
+            handler(PlaceResult(name: name, location: CLLocationCoordinate2D(latitude: lat, longitude: lng)), nil)
         }
     }
 }

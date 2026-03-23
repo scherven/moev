@@ -61,15 +61,9 @@ struct TextDisplay: View {
     }
     
     func updatePossibilities() {
-        APIHandler.shared.autocomplete(query: annotation.name) { data, error in
-            guard let places = data else {
-                print("eriojg", error)
-                return
-            }
-            
-            possibilities = places.predictions!.map { place in
-                return UIPlace(main_text: place.structured_formatting!.main_text!, secondary_text: place.structured_formatting!.secondary_text!, placeID: place.place_id!)
-            }
+        APIHandler.shared.autocomplete(query: annotation.name) { places, error in
+            guard let places = places else { return }
+            possibilities = places
         }
     }
 }

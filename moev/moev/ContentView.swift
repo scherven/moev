@@ -121,7 +121,7 @@ struct ContentView: View {
                 return
             }
             
-            print("FOUND ROUTES", route.routes!.count)
+            print("FOUND ROUTES", route.routes?.count)
             
 //            print("GOT ROUTE", route)
             
@@ -233,22 +233,14 @@ struct ContentView: View {
     }
     
     func addMarker(p: UIPlace) {
-        APIHandler.shared.get_info(place_id: p.placeID) { data, error in
-            guard let d = data else {
-                print("i", error)
-                return
-            }
+        APIHandler.shared.get_info(place_id: p.placeID) { result, error in
+            guard let result = result else { return }
 
-            let geom = d.result!.geometry!.location!
-            let location = CLLocationCoordinate2D(latitude: geom.lat!,
-                                                  longitude: geom.lng!)
-            
-            annotations[searchingIdx].name = d.result!.name!
-            annotations[searchingIdx].location = location
+            annotations[searchingIdx].name = result.name
+            annotations[searchingIdx].location = result.location
             annotations[searchingIdx].placeID = p.placeID
-            
             annotations[searchingIdx].justChanged = true
-            
+
             getDirections(senderID: searchingIdx)
         }
     }

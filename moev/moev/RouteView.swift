@@ -40,7 +40,7 @@ struct RouteView: View {
                     .background(Color(hex: "c4c4c4"))
             } else if let td = step.transitDetails {
                 VStack {
-                    Text(td.transitLine!.nameShort!)
+                    Text(td.transitLine!.nameShort ?? "")
                         .foregroundColor(Color(hex: td.transitLine!.textColor!)) // Set text color using hex value
                         .lineLimit(1)
                         .font(.system(size: 24))
@@ -58,7 +58,7 @@ struct RouteView: View {
     
     func dots() -> some View {
         return HStack(spacing: 10) {
-            ForEach(1...Int(xposition(for: route.durationFromNow) / 100), id:\.self) { i in
+            ForEach(1...(Int(xposition(for: route.durationFromNow) / 100) + 2), id:\.self) { i in
                 Circle()
                     .frame(width: 3, height: 3)
                     .foregroundColor(Color.blue) // You can change the color as desired
