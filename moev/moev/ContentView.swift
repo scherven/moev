@@ -291,21 +291,27 @@ struct ContentView: View {
     
     @ViewBuilder
     func routesList() -> some View {
-        // Collect the first alternative from each segment, ordered by id (A→B, B→C …)
+        // Segments ordered A→B, B→C, …
         let ordered = routes.sorted { $0.id < $1.id }
-        let firstRoutes = ordered.compactMap { $0.routes.first }
+        guard let firstSegment = ordered.first, !firstSegment.routes.isEmpty else {
+            return
+        }
 
-        if !firstRoutes.isEmpty {
-            // Build dwell array: dwellMinutes[i] = time spent at the stop
-            // between segments[i] and segments[i+1], i.e. annotations[i+1].
-            let dwell: [Int?] = firstRoutes.indices.map { i in
-                i + 1 < annotations.count ? annotations[i + 1].dwellMinutes : nil
-            }
+        // "Tail" segments: best alternative from each segment after the first.
+        let tailRoutes = ordered.dropFirst().compactMap { $0.routes.first }
 
-            let multi = MultiLegRoute(segments: firstRoutes, dwellMinutes: dwell)
-
-            MultiRouteView(multiRoute: multi) {
-                selectedMultiLeg = multi
+        // One row per alternative of the primary segment; each row uses
+        // that alternative combined with the best option from later segments.
+        VStack(spacing: 8) {
+            ForEach(Array(firstSegment.routes.enumerated()), id: \.offset) { _, route in
+                let segments = [route] + tailRoutes
+                let dwell: [Int?] = segments.indices.map { i in
+                    i + 1 < annotations.count ? annotations[i + 1].dwellMinutes : nil
+                }
+                let multi = MultiLegRoute(segments: segments, dwellMinutes: dwell)
+                MultiRouteView(multiRoute: multi) {
+                    selectedMultiLeg = multi
+                }
             }
         }
     }
