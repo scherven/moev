@@ -67,9 +67,7 @@ func _hm(plus: Int, clamp: Bool) -> (Double, Double) {
 
 func time(plus: Int) -> String {
     let (hour, minutes) = _hm(plus: plus, clamp: true)
-    let padh = String(repeating: "0", count: hour < 10 ? 1 : 0)
-    let padm = String(repeating: "0", count: minutes < 10 ? 1 : 0)
-    return "\(padh)\(hour):\(padm)\(minutes)"
+    return String(format: "%02d:%02d", Int(hour), Int(minutes))
 }
 
 func time(plus: Int) -> Double {
@@ -126,8 +124,35 @@ struct Annotation: Identifiable {
 
 struct UIPolyline: Identifiable {
     var id: Int
-    
     var polyline: MKPolyline
+    var color: Color = .blue
+}
+
+/// Extracts every MKPolyline from a MultiLegRoute, paired with the
+/// transit-line color (or gray for walks, blue for unspecified).
+func coloredPolylines(from multi: MultiLegRoute) -> [UIPolyline] {
+    var result: [UIPolyline] = []
+    var idx = 0
+    for route in multi.segments {
+        for leg in route.legs ?? [] {
+            for step in leg.steps {
+                guard let multi = step.polyline else { continue }
+                let color: Color
+                if let hex = step.transitDetails?.transitLine?.color {
+                    color = Color(hex: hex)
+                } else if step.travelMode == .WALK {
+                    color = .gray
+                } else {
+                    color = .blue
+                }
+                for pl in multi.polylines {
+                    result.append(UIPolyline(id: idx, polyline: pl, color: color))
+                    idx += 1
+                }
+            }
+        }
+    }
+    return result
 }
 
 struct UIPlace: Identifiable, Codable {
@@ -152,7 +177,11 @@ struct TimePickerItem: Identifiable {
     let id: Int  // annotation index
 }
 
-struct MultiLegRoute: Identifiable {
+struct MultiLegRoute: Identifiable, Equatable {
+    static func == (lhs: MultiLegRoute, rhs: MultiLegRoute) -> Bool {
+        lhs.id == rhs.id
+    }
+
     var id = UUID()
     var segments: [CombinedRoute]
     var dwellMinutes: [Int?]

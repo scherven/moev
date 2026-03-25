@@ -37,6 +37,7 @@ struct ContentView: View {
 
     @State private var selectedMultiLeg: MultiLegRoute? = nil
     @State private var timePickerItem: TimePickerItem? = nil
+    @State private var cameraPosition: MapCameraPosition = .automatic
 
     @StateObject private var recentSearches = RecentSearchesStore()
 
@@ -102,7 +103,7 @@ struct ContentView: View {
                 }
                 .background(UIColor.Theme.listBackgroundColor)
                 .edgesIgnoringSafeArea(.all)
-                .offset(CGSize(width: 0.0, height: searchingSlowAnimated ? 0 : geometry.size.height / 2 - 45))
+                .offset(CGSize(width: 0.0, height: (searchingSlowAnimated || loadingResults || showingResults) ? 0 : geometry.size.height / 2 - 45))
                 .frame(height: geometry.size.height - 30)
                 .gesture(
                     DragGesture().onEnded { value in
@@ -114,6 +115,18 @@ struct ContentView: View {
             }
             .sheet(item: $selectedMultiLeg) { multi in
                 RouteDetailView(multiRoute: multi)
+            }
+            .onChange(of: selectedMultiLeg) { _, newValue in
+                guard let multi = newValue else { return }
+                polylines = coloredPolylines(from: multi)
+                let rect = polylines
+                    .map { $0.polyline.boundingMapRect }
+                    .reduce(MKMapRect.null) { $0.union($1) }
+                if !rect.isNull {
+                    let padded = rect.insetBy(dx: -rect.size.width * 0.2,
+                                              dy: -rect.size.height * 0.2)
+                    cameraPosition = .rect(padded)
+                }
             }
         }
     }
@@ -218,7 +231,7 @@ struct ContentView: View {
     }
     
     func map(_ geometry: GeometryProxy) -> some View {
-        return Map {
+        return Map(position: $cameraPosition) {
             ForEach(annotations.filter { i in i.location != nil }) { a in
                 Marker(coordinate: a.location!) {
                     Image(systemName: "mappin")
@@ -227,7 +240,7 @@ struct ContentView: View {
             
             ForEach(polylines) { p in
                 MapPolyline(p.polyline)
-                    .stroke(.blue, lineWidth: 2.0)
+                    .stroke(p.color, lineWidth: 3)
             }
             
             UserAnnotation()
@@ -262,12 +275,18 @@ struct ContentView: View {
     }
     
     func timeMarks() -> some View {
-        return HStack {
-            ForEach(0..<6, id: \.self) { i in // todo calculate based on length of route
+        // ZStack + offset keeps the container at a fixed height while
+        // each label sits at its absolute timeline x coordinate.
+        ZStack(alignment: .topLeading) {
+            ForEach(0..<6, id: \.self) { i in
                 Text(time(plus: i))
-                    .position(x: CGFloat(xposition(for: time(plus: i))), y: 10)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .fixedSize()
+                    .offset(x: CGFloat(xposition(for: time(plus: i))))
             }
         }
+        .frame(height: 20)
     }
     
     @ViewBuilder
@@ -320,17 +339,44 @@ struct ContentView: View {
         }
     }
 
+    func removeAnnotation(at index: Int) {
+        guard annotations.count > 2, index > 0 else { return }
+        annotations.remove(at: index)
+        renumberAnnotations()
+
+        // Drop any route segments that referenced the removed stop or
+        // the stop after it (both are now stale).
+        routes.removeAll { $0.id == index - 1 || $0.id == index }
+        polylines = []
+        withAnimation { showingResults = false }
+
+        // Re-route the pair that now spans the gap (index-1 → index,
+        // which after removal is the same integer positions).
+        let lo = index - 1
+        let hi = index  // previously index+1, now shifted down
+        if lo >= 0, hi < annotations.count,
+           getWaypoint(lo) != nil, getWaypoint(hi) != nil {
+            withAnimation { loadingResults = true }
+            getDirections(id1: lo, id2: hi)
+        }
+    }
+
     func addMarker(p: UIPlace) {
+        // Respond immediately: fill the search bar and dismiss the panel
+        // so the UI feels instant. The coordinate arrives in the background.
+        let idx = searchingIdx
+        annotations[idx].name = p.main_text
+        annotations[idx].placeID = p.placeID
+        annotations[idx].justChanged = true
+        recentSearches.add(p)
+        dismissSearch()
+
         APIHandler.shared.get_info(place_id: p.placeID) { result, error in
             guard let result = result else { return }
-
-            annotations[searchingIdx].name = result.name
-            annotations[searchingIdx].location = result.location
-            annotations[searchingIdx].placeID = p.placeID
-            annotations[searchingIdx].justChanged = true
-
-            recentSearches.add(p)
-            getDirections(senderID: searchingIdx)
+            self.annotations[idx].name = result.name
+            self.annotations[idx].location = result.location
+            self.annotations[idx].justChanged = true
+            self.getDirections(senderID: idx)
         }
     }
     
@@ -364,6 +410,17 @@ struct ContentView: View {
                         Image(systemName: "plus.circle")
                             .padding(8)
                             .foregroundColor(.secondary)
+                    }
+                    // Remove button: hidden for the origin row and when
+                    // only two stops remain (origin + one destination).
+                    if i > 0 && annotations.count > 2 {
+                        Button {
+                            removeAnnotation(at: i)
+                        } label: {
+                            Image(systemName: "minus.circle")
+                                .padding(8)
+                                .foregroundColor(.red.opacity(0.7))
+                        }
                     }
                 }
             }

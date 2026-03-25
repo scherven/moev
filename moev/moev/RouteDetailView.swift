@@ -4,33 +4,75 @@
 //
 
 import SwiftUI
+import MapKit
 
 struct RouteDetailView: View {
     let multiRoute: MultiLegRoute
 
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                if let first = multiRoute.segments.first {
-                    Text("Leave at \(first.startTime.format("h:mm a"))")
-                        .font(.headline)
-                        .padding()
-                }
+    @State private var cameraPosition: MapCameraPosition = .automatic
 
-                ForEach(Array(multiRoute.segments.enumerated()), id: \.offset) { idx, route in
-                    ForEach(route.legs ?? []) { leg in
-                        ForEach(leg.steps) { step in
-                            stepRow(step)
-                            Divider().padding(.leading, 64)
-                        }
+    private var uiPolylines: [UIPolyline] { coloredPolylines(from: multiRoute) }
+
+    // Pin locations: start of each segment.
+    private var pinCoordinates: [CLLocationCoordinate2D] {
+        multiRoute.segments.compactMap { route in
+            route.legs?.first?.steps.first?.startLocation.flatMap {
+                guard let lat = $0.latLng?.latitude, let lng = $0.latLng?.longitude else { return nil }
+                return CLLocationCoordinate2D(latitude: lat, longitude: lng)
+            }
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+
+            // ── Map ──────────────────────────────────────────────────────
+            Map(position: $cameraPosition) {
+                ForEach(uiPolylines) { p in
+                    MapPolyline(p.polyline)
+                        .stroke(p.color, lineWidth: 3)
+                }
+                ForEach(Array(pinCoordinates.enumerated()), id: \.offset) { _, coord in
+                    Marker(coordinate: coord) {
+                        Image(systemName: "mappin")
+                    }
+                }
+            }
+            .frame(height: 260)
+            .onAppear {
+                let rect = uiPolylines
+                    .map { $0.polyline.boundingMapRect }
+                    .reduce(MKMapRect.null) { $0.union($1) }
+                guard !rect.isNull else { return }
+                let padded = rect.insetBy(dx: -rect.size.width * 0.25,
+                                          dy: -rect.size.height * 0.25)
+                cameraPosition = .rect(padded)
+            }
+
+            // ── Step list ────────────────────────────────────────────────
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if let first = multiRoute.segments.first {
+                        Text("Leave at \(first.startTime.format("h:mm a"))")
+                            .font(.headline)
+                            .padding()
                     }
 
-                    // Dwell row between segments
-                    if idx < multiRoute.segments.count - 1,
-                       idx < multiRoute.dwellMinutes.count,
-                       let dwell = multiRoute.dwellMinutes[idx] {
-                        dwellRow(minutes: dwell)
-                        Divider().padding(.leading, 64)
+                    ForEach(Array(multiRoute.segments.enumerated()), id: \.offset) { idx, route in
+                        ForEach(route.legs ?? []) { leg in
+                            ForEach(leg.steps) { step in
+                                stepRow(step)
+                                Divider().padding(.leading, 64)
+                            }
+                        }
+
+                        // Dwell row between segments
+                        if idx < multiRoute.segments.count - 1,
+                           idx < multiRoute.dwellMinutes.count,
+                           let dwell = multiRoute.dwellMinutes[idx] {
+                            dwellRow(minutes: dwell)
+                            Divider().padding(.leading, 64)
+                        }
                     }
                 }
             }

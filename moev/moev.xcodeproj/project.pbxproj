@@ -22,7 +22,6 @@
 		20853EA32B216EEE00D14116 /* PlaceDetails.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20853EA22B216EEE00D14116 /* PlaceDetails.swift */; };
 		20F70B252B1679F100B363FA /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F70B242B1679F100B363FA /* LocationManager.swift */; };
 		20F70B272B16AB8B00B363FA /* TextDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F70B262B16AB8B00B363FA /* TextDisplay.swift */; };
-		20FAC05A2B2265D700D33275 /* RouteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20FAC0592B22655700D33275 /* RouteView.swift */; };
 		20FAC05C2B2268C500D33275 /* UIUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20FAC05B2B2268C500D33275 /* UIUtils.swift */; };
 		20FC63B12F71CE8400617B4F /* RouteDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20FC63B02F71CE8400617B4F /* RouteDetailView.swift */; };
 		20FC63B32F71CE9400617B4F /* RecentSearchesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20FC63B22F71CE9400617B4F /* RecentSearchesStore.swift */; };
@@ -69,7 +68,6 @@
 		20E272442B1792AA00534C2F /* test.gpx */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = test.gpx; path = ../test.gpx; sourceTree = "<group>"; };
 		20F70B242B1679F100B363FA /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
 		20F70B262B16AB8B00B363FA /* TextDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextDisplay.swift; sourceTree = "<group>"; };
-		20FAC0592B22655700D33275 /* RouteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteView.swift; sourceTree = "<group>"; };
 		20FAC05B2B2268C500D33275 /* UIUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIUtils.swift; sourceTree = "<group>"; };
 		20FC63B02F71CE8400617B4F /* RouteDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteDetailView.swift; sourceTree = "<group>"; };
 		20FC63B22F71CE9400617B4F /* RecentSearchesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentSearchesStore.swift; sourceTree = "<group>"; };
@@ -130,7 +128,6 @@
 				20FC63B42F72098900617B4F /* MultiRouteView.swift */,
 				20FC63B22F71CE9400617B4F /* RecentSearchesStore.swift */,
 				20FC63B02F71CE8400617B4F /* RouteDetailView.swift */,
-				20FAC0592B22655700D33275 /* RouteView.swift */,
 				206453342B2019CF00E288C9 /* API */,
 				20A381322B15AECE00172E8A /* Info.plist */,
 				20400EB32B145A6D00CA7D7A /* moevApp.swift */,
@@ -324,7 +321,6 @@
 				20FC63B12F71CE8400617B4F /* RouteDetailView.swift in Sources */,
 				2064533E2B2164C200E288C9 /* PlaceAutocomplete.swift in Sources */,
 				2064533A2B2041F800E288C9 /* ComputeRoutes.swift in Sources */,
-				20FAC05A2B2265D700D33275 /* RouteView.swift in Sources */,
 				20853EA32B216EEE00D14116 /* PlaceDetails.swift in Sources */,
 				20202B312B14F0DD007CC8AA /* APIHandler.swift in Sources */,
 				20400EB62B145A6D00CA7D7A /* ContentView.swift in Sources */,

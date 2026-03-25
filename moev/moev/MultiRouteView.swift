@@ -54,7 +54,7 @@ struct MultiRouteView: View {
         }
         .frame(width: CGFloat(xposition(for: totalDuration)), height: 60)
         .contentShape(Rectangle())
-        .onTapGesture { onSelect() }
+        .simultaneousGesture(TapGesture().onEnded { onSelect() })
     }
 
     // MARK: - Step rendering (mirrors RouteView.stepsView)
